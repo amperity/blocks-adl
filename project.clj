@@ -10,19 +10,16 @@
   :dependencies
   [[org.clojure/clojure "1.8.0"]
    [org.clojure/tools.logging "0.4.0"]
+   [com.microsoft.azure/azure-data-lake-store-sdk "2.2.3"]
+   [com.stuartsierra/component "0.3.2"]
    [mvxcvi/blocks "0.9.1"]
-   [mvxcvi/multihash "2.0.1"]
-   [com.microsoft.azure/azure-data-lake-store-sdk "2.2.3"]]
+   [mvxcvi/multihash "2.0.1"]]
 
   :profiles
   {:dev
-   {:dependencies [[commons-logging "1.2"]]}
+   {:dependencies [[org.slf4j/slf4j-simple "1.7.21"]]}
 
    :repl
    {:source-paths ["dev"]
     :dependencies [[org.clojure/tools.namespace "0.2.11"]]
-    :jvm-opts ["-Dorg.apache.commons.logging.Log=org.apache.commons.logging.impl.SimpleLog"
-               #_"-Dorg.apache.commons.logging.simplelog.defaultlog=trace"]}
-
-   :test
-   {:jvm-opts ["-Dorg.apache.commons.logging.Log=org.apache.commons.logging.impl.NoOpLog"]}})
+    :jvm-opts ["-Dorg.slf4j.simpleLogger.defaultLogLevel=debug"]}})

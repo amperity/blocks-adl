@@ -7,7 +7,9 @@
     [clojure.stacktrace :refer [print-cause-trace]]
     [clojure.string :as str]
     [clojure.tools.namespace.repl :refer [refresh]]
-    [multihash.core :as multihash])
+    [com.stuartsierra.component :as component]
+    [multihash.core :as multihash]
+    [multihash.digest :as digest])
   (:import
     (com.microsoft.azure.datalake.store
       ADLException
