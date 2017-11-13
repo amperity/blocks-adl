@@ -142,6 +142,7 @@
     (try
       (let [path (id->path root id)
             entry (.getDirectoryEntry client path)]
+        ; FIXME: don't return writable blocks
         (directory-entry->stats store-fqdn root entry))
       (catch ADLException ex
         ; Check for not-found errors and return nil.
@@ -152,6 +153,7 @@
   (-list
     [this opts]
     (->> (list-directory-seq client root (:limit opts) (:after opts))
+         ; FIXME: filter out directories and writable files
          (map (partial directory-entry->stats store-fqdn root))
          (store/select-stats opts)))
 
@@ -170,6 +172,7 @@
                     output (.createFile client path IfExists/FAIL)
                     content (block/open block)]
           (io/copy content output)))
+      ; TODO: set read-only bits to indicate we're done writing
       (.-get this (:id block))))
 
 
