@@ -94,8 +94,8 @@
       (log/debugf "EnumerateDirectory in %s after %s limit %s"
                   path (pr-str after) (pr-str limit))
       (let [listing (if limit
-                      (.enumerateDirectory client path limit after)
-                      (.enumerateDirectory client path after))]
+                      (.enumerateDirectory client ^String path ^long limit ^String after)
+                      (.enumerateDirectory client ^String path ^String after))]
         (when (seq listing)
           (concat listing
                   (list-directory-seq
@@ -177,14 +177,7 @@
     [this id]
     (let [path (id->path root id)]
       (log/debugf "Deleting file %s" (adl-uri store-fqdn path))
-      ; TODO: check behavior against non-existent file
-      (.delete client path)))
-
-
-  ; TODO: other protocols like ErasableStore?
-  ; boolean deleteRecursive(String path)
-  ; Might delete the root folder too, which is undesirable
-  )
+      (.delete client path))))
 
 
 ;; ## Store Construction
