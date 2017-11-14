@@ -21,6 +21,14 @@
 
 ;; ## Storage Utilities
 
+(def write-permission "600")
+(def read-permission "440")
+
+(defn writable?
+  [^DirectoryEntry entry]
+  (when entry
+    (= write-permission (.-permission entry))))
+
 (defn- adl-uri
   "Constructs a URI referencing a file in ADLS."
   [fqdn path]
@@ -142,8 +150,8 @@
     (try
       (let [path (id->path root id)
             entry (.getDirectoryEntry client path)]
-        ; FIXME: don't return writable blocks
-        (directory-entry->stats store-fqdn root entry))
+        (when-not (writable? entry)
+          (directory-entry->stats store-fqdn root entry)))
       (catch ADLException ex
         ; Check for not-found errors and return nil.
         (when (not= 404 (.httpResponseCode ex))
@@ -169,10 +177,10 @@
     (let [path (id->path root (:id block))]
       (when-not (.checkExists client path)
         (with-open [;output (.createFile client path IfExists/OVERWRITE "440" false)
-                    output (.createFile client path IfExists/FAIL)
+                    output (.createFile client path IfExists/FAIL "640" false)
                     content (block/open block)]
-          (io/copy content output)))
-      ; TODO: set read-only bits to indicate we're done writing
+          (io/copy content output)
+          (.setPermisson client path read-permission)))
       (.-get this (:id block))))
 
 
