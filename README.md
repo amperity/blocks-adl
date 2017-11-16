@@ -1,6 +1,8 @@
 blocks-adl
 ==========
 
+[![CircleCI](https://circleci.com/gh/amperity/blocks-adl.svg?style=svg)](https://circleci.com/gh/amperity/blocks-adl)
+
 This library implements a [content-addressable](https://en.wikipedia.org/wiki/Content-addressable_storage)
 [block store](https://github.com/greglook/blocks) backed by an Azure Data Lake
 storage account.
