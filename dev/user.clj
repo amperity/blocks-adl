@@ -26,8 +26,7 @@
         token-provider (ClientCredsTokenProvider.
                            (System/getenv "AZ_AUTH_URL")
                            (System/getenv "AZ_APP_ID")
-                           (System/getenv "AZ_APP_KEY"))
-        client (ADLStoreClient/createClient store-fqdn token-provider)]
+                           (System/getenv "AZ_APP_KEY"))]
     (->
       (adl-block-store store-fqdn
                        :root (or path "/blocks")
