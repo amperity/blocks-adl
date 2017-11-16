@@ -19,3 +19,17 @@
     (com.microsoft.azure.datalake.store.oauth2
       AccessTokenProvider
       ClientCredsTokenProvider)))
+
+
+(defn store [path]
+  (let [store-fqdn (System/getenv "BLOCKS_ADL_TEST_STORE")
+        token-provider (ClientCredsTokenProvider.
+                           (System/getenv "AZ_AUTH_URL")
+                           (System/getenv "AZ_APP_ID")
+                           (System/getenv "AZ_APP_KEY"))
+        client (ADLStoreClient/createClient store-fqdn token-provider)]
+    (->
+      (adl-block-store store-fqdn
+                       :root (or path "/blocks")
+                       :token-provider token-provider)
+      (component/start))))

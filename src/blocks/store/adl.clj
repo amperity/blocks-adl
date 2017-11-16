@@ -14,6 +14,7 @@
       ADLException
       ADLStoreClient
       DirectoryEntry
+      DirectoryEntryType
       IfExists)
     (com.microsoft.azure.datalake.store.oauth2
       AccessTokenProvider)))
@@ -21,13 +22,13 @@
 
 ;; ## Storage Utilities
 
-(def write-permission "600")
+(def write-permission "660")
 (def read-permission "440")
 
-(defn writable?
+(defn readable?
   [^DirectoryEntry entry]
   (when entry
-    (= write-permission (.-permission entry))))
+    (= read-permission (.-permission entry))))
 
 (defn- adl-uri
   "Constructs a URI referencing a file in ADLS."
@@ -79,6 +80,18 @@
    :source (adl-uri store-fqdn (.fullName entry))
    :stored-at (.lastModifiedTime entry)})
 
+(defn- try-until
+  "Call and return given zero-arity function `f` up to `tries`
+  times, waiting `wait-period` before a new attempt. If no
+  tries remain, log a message with `intent`, return nil."
+  [f {:keys [tries wait-period intent]
+      :or {tries 1 wait-period 20} :as opts}]
+  (if-not (pos? tries)
+    (log/infof "Timed out waiting for eventual consistency%s."
+               (or (and intent (str " (for: " intent ")")) ""))
+    (when-not (f)
+      (Thread/sleep wait-period)
+      (recur f (update opts :tries dec)))))
 
 (defn- file->block
   "Creates a lazy block to read from the file identified by the stats map."
@@ -150,7 +163,7 @@
     (try
       (let [path (id->path root id)
             entry (.getDirectoryEntry client path)]
-        (when-not (writable? entry)
+        (when (readable? entry)
           (directory-entry->stats store-fqdn root entry)))
       (catch ADLException ex
         ; Check for not-found errors and return nil.
@@ -161,7 +174,8 @@
   (-list
     [this opts]
     (->> (list-directory-seq client root (:limit opts) (:after opts))
-         ; FIXME: filter out directories and writable files
+         (filter #(#{DirectoryEntryType/FILE} (.-type %)))
+         (filter readable?)
          (map (partial directory-entry->stats store-fqdn root))
          (store/select-stats opts)))
 
@@ -177,10 +191,26 @@
     (let [path (id->path root (:id block))]
       (when-not (.checkExists client path)
         (with-open [;output (.createFile client path IfExists/OVERWRITE "440" false)
-                    output (.createFile client path IfExists/FAIL "640" false)
+                    output (.createFile client path IfExists/FAIL write-permission false)
                     content (block/open block)]
-          (io/copy content output)
-          (.setPermisson client path read-permission)))
+          (comment
+            "can hit this exception from time to time (~ 1/100 puts)
+            upon (.close output). The consumer should provide own retry
+            handling.
+
+            java.lang.NullPointerException
+               at blocks.data$merge_blocks.invokeStatic(data.clj:306)
+               at blocks.data$merge_blocks.invoke(data.clj:300)
+               at blocks.core$put_BANG_.invokeStatic(core.clj:244)
+               at blocks.core$put_BANG_.invoke(core.clj:236)")
+          (io/copy content output))
+        (try-until #(= (:size block)
+                       (or (.length (.getDirectoryEntry client path)) 0))
+                   {:tries 5 :wait-period 200 :intent "upload complete"})
+        (.setPermission client path read-permission)
+        (try-until #(= read-permission
+                       (.-octalPermissions (.getAclStatus client path)))
+                   {:intent "permission flag set"}))
       (.-get this (:id block))))
 
 
