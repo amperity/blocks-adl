@@ -14,12 +14,27 @@
       ADLException
       ADLStoreClient
       DirectoryEntry
+      DirectoryEntryType
       IfExists)
     (com.microsoft.azure.datalake.store.oauth2
       AccessTokenProvider)))
 
 
 ;; ## Storage Utilities
+
+(def write-permission "660")
+(def read-permission "440")
+
+(defn- file-entry?
+  [^DirectoryEntry entry]
+  (= DirectoryEntryType/FILE (.-type entry)))
+
+(defn read-only-block?
+  [^DirectoryEntry entry]
+  (when entry
+    (and (= read-permission (.-permission entry))
+         (file-entry? entry))))
+
 
 (defn- adl-uri
   "Constructs a URI referencing a file in ADLS."
@@ -71,6 +86,18 @@
    :source (adl-uri store-fqdn (.fullName entry))
    :stored-at (.lastModifiedTime entry)})
 
+(defn- try-until
+  "Call zero-arity predicate function `ready?` up to `tries`
+  times, waiting `wait-period` before a new attempt. If no
+  tries remain, log a message with `intent`, return nil."
+  [ready? {:keys [tries wait-period intent]
+           :or {tries 1 wait-period 20} :as opts}]
+  (if-not (pos? tries)
+    (log/infof "Timed out waiting for eventual consistency%s."
+               (or (and intent (str " (for: " intent ")")) ""))
+    (when-not (ready?)
+      (Thread/sleep wait-period)
+      (recur ready? (update opts :tries dec)))))
 
 (defn- file->block
   "Creates a lazy block to read from the file identified by the stats map."
@@ -142,8 +169,8 @@
     (try
       (let [path (id->path root id)
             entry (.getDirectoryEntry client path)]
-        ; FIXME: don't return writable blocks
-        (directory-entry->stats store-fqdn root entry))
+        (when (read-only-block? entry)
+          (directory-entry->stats store-fqdn root entry)))
       (catch ADLException ex
         ; Check for not-found errors and return nil.
         (when (not= 404 (.httpResponseCode ex))
@@ -153,7 +180,7 @@
   (-list
     [this opts]
     (->> (list-directory-seq client root (:limit opts) (:after opts))
-         ; FIXME: filter out directories and writable files
+         (filter read-only-block?)
          (map (partial directory-entry->stats store-fqdn root))
          (store/select-stats opts)))
 
@@ -168,11 +195,16 @@
     [this block]
     (let [path (id->path root (:id block))]
       (when-not (.checkExists client path)
-        (with-open [;output (.createFile client path IfExists/OVERWRITE "440" false)
-                    output (.createFile client path IfExists/FAIL)
+        (with-open [output (.createFile client path IfExists/FAIL write-permission false)
                     content (block/open block)]
-          (io/copy content output)))
-      ; TODO: set read-only bits to indicate we're done writing
+          (io/copy content output))
+        (try-until #(= (:size block)
+                       (or (.length (.getDirectoryEntry client path)) 0))
+                   {:tries 5 :wait-period 200 :intent "upload complete"})
+        (.setPermission client path read-permission)
+        (try-until #(= read-permission
+                       (.-octalPermissions (.getAclStatus client path)))
+                   {:intent "permission flag set"}))
       (.-get this (:id block))))
 
 
