@@ -30,7 +30,7 @@
       (.createDirectory client root-path "770")
       ; NOTE: can run concurrent tests by making this `check-store*` instead.
       (tests/check-store
-        (fn [ctx]
+        (fn [& _]
           (let [path (format "%s/%08d" root-path (swap! counter inc))
                 store (adl-block-store store-fqdn
                                       :root path
