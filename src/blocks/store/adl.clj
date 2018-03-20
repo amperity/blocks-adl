@@ -195,7 +195,7 @@
     [this block]
     (let [path (id->path root (:id block))]
       (when-not (.checkExists client path)
-        (with-open [output (.createFile client path IfExists/FAIL write-permission false)
+        (with-open [output (.createFile client path IfExists/FAIL write-permission true)
                     content (block/open block)]
           (io/copy content output))
         (try-until #(= (:size block)
