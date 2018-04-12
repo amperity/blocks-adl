@@ -150,10 +150,11 @@
         (throw (IllegalStateException.
                  (str "Cannot access Azure Data Lake block store at "
                       (adl-uri store-fqdn root)))))
-      (let [summary (.getContentSummary client root)]
-        (log/infof "Store contains %.1f MB in %d blocks"
-                   (/ (.spaceConsumed summary) 1024.0 1024.0)
-                   (.fileCount summary)))
+      (when (:check-summary? this)
+        (let [summary (.getContentSummary client root)]
+          (log/infof "Store contains %.1f MB in %d blocks"
+                     (/ (.spaceConsumed summary) 1024.0 1024.0)
+                     (.fileCount summary))))
       (assoc this :client client)))
 
 
