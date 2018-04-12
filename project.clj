@@ -1,4 +1,4 @@
-(defproject amperity/blocks-adl "0.1.1-SNAPSHOT"
+(defproject amperity/blocks-adl "0.2.0-SNAPSHOT"
   :description "Content-addressable Azure DataLake block store."
   :url "https://github.com/amperity/blocks-adls"
   :license {:name "Apache License 2.0"
