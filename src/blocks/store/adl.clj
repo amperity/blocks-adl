@@ -86,6 +86,7 @@
    :source (adl-uri store-fqdn (.fullName entry))
    :stored-at (.lastModifiedTime entry)})
 
+
 (defn- try-until
   "Call zero-arity predicate function `ready?` up to `tries`
   times, waiting `wait-period` before a new attempt. If no
@@ -98,6 +99,7 @@
     (when-not (ready?)
       (Thread/sleep wait-period)
       (recur ready? (update opts :tries dec)))))
+
 
 (defn- file->block
   "Creates a lazy block to read from the file identified by the stats map."
@@ -194,19 +196,18 @@
 
   (-put!
     [this block]
-    (let [path (id->path root (:id block))]
-      (when-not (.checkExists client path)
-        (with-open [output (.createFile client path IfExists/FAIL write-permission true)
-                    content (block/open block)]
-          (io/copy content output))
-        (try-until #(= (:size block)
-                       (or (.length (.getDirectoryEntry client path)) 0))
-                   {:tries 5 :wait-period 200 :intent "upload complete"})
-        (.setPermission client path read-permission)
-        (try-until #(= read-permission
-                       (.-octalPermissions (.getAclStatus client path)))
-                   {:intent "permission flag set"}))
-      (.-get this (:id block))))
+    (or (.-get this (:id block))
+        (let [path (id->path root (:id block))]
+          (with-open [output (.createFile client path IfExists/FAIL write-permission true)
+                      content (block/open block)]
+            (io/copy content output))
+          (try-until #(= (:size block)
+                         (or (.length (.getDirectoryEntry client path)) 0))
+                     {:tries 5 :wait-period 200 :intent "upload complete"})
+          (.setPermission client path read-permission)
+          (try-until #(= read-permission
+                         (.-octalPermissions (.getAclStatus client path)))
+                     {:intent "permission flag set"}))))
 
 
   (-delete!
