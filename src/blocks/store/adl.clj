@@ -204,7 +204,9 @@
         (.setPermission client path read-permission)
         (try-until #(= read-permission
                        (.-octalPermissions (.getAclStatus client path)))
-                   {:intent "permission flag set"}))
+                   {:intent "permission flag set"})
+        (try-until #(not (nil? (.-stat this (:id block))))
+                   {:intest "block visible to stat"}))
       (.-get this (:id block))))
 
 
