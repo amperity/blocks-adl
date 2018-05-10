@@ -95,9 +95,12 @@
   (if-not (pos? tries)
     (log/infof "Timed out waiting for eventual consistency%s."
                (or (and intent (str " (for: " intent ")")) ""))
-    (when-not (ready?)
-      (Thread/sleep wait-period)
-      (recur ready? (update opts :tries dec)))))
+    (let [outcome (ready?)]
+      (if outcome
+        outcome
+        (do
+          (Thread/sleep wait-period)
+          (recur ready? (update opts :tries dec)))))))
 
 (defn- file->block
   "Creates a lazy block to read from the file identified by the stats map."
@@ -130,7 +133,15 @@
                     (and limit (- limit (count listing)))
                     (.name ^DirectoryEntry (last listing)))))))))
 
-
+(defn- wait-read-only-block
+  [^ADLStoreClient client path ^DirectoryEntry entry]
+  (try-until
+    (fn wait-readable []
+      (let [path (or path (and entry (.fullName entry)))
+            entry (or entry (.getDirectoryEntry client path))]
+        (when (read-only-block? entry)
+          entry)))
+    {:intent "permission flag set"}))
 
 ;; ## Block Store
 
@@ -167,10 +178,11 @@
   (-stat
     [this id]
     (try
-      (let [path (id->path root id)
-            entry (.getDirectoryEntry client path)]
-        (when (read-only-block? entry)
-          (directory-entry->stats store-fqdn root entry)))
+      (let [path (id->path root id)]
+        (directory-entry->stats
+          store-fqdn
+          root
+          (wait-read-only-block client path nil)))
       (catch ADLException ex
         ; Check for not-found errors and return nil.
         (when (not= 404 (.httpResponseCode ex))
@@ -180,7 +192,7 @@
   (-list
     [this opts]
     (->> (list-directory-seq client root (:limit opts) (:after opts))
-         (filter read-only-block?)
+         (map (partial wait-read-only-block client nil))
          (map (partial directory-entry->stats store-fqdn root))
          (store/select-stats opts)))
 
@@ -201,12 +213,7 @@
         (try-until #(= (:size block)
                        (or (.length (.getDirectoryEntry client path)) 0))
                    {:tries 5 :wait-period 200 :intent "upload complete"})
-        (.setPermission client path read-permission)
-        (try-until #(= read-permission
-                       (.-octalPermissions (.getAclStatus client path)))
-                   {:intent "permission flag set"})
-        (try-until #(not (nil? (.-stat this (:id block))))
-                   {:intest "block visible to stat"}))
+        (.setPermission client path read-permission))
       (.-get this (:id block))))
 
 
