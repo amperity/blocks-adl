@@ -22,18 +22,18 @@
 
 ;; ## Storage Utilities
 
-(def write-permission "660")
-(def read-permission "440")
+(def write-permission "640")
+(def pre-write-path-suffix ".ATTEMPT")
 
 (defn- file-entry?
   [^DirectoryEntry entry]
   (= DirectoryEntryType/FILE (.-type entry)))
 
-(defn read-only-block?
+(defn valid-block?
   [^DirectoryEntry entry]
   (when entry
-    (and (= read-permission (.-permission entry))
-         (file-entry? entry))))
+    (and (file-entry? entry)
+         (not (str/ends-with? (.fullName entry) pre-write-path-suffix)))))
 
 
 (defn- adl-uri
@@ -172,7 +172,7 @@
     (try
       (let [path (id->path root id)
             entry (.getDirectoryEntry client path)]
-        (when (read-only-block? entry)
+        (when (valid-block? entry)
           (directory-entry->stats store-fqdn root entry)))
       (catch ADLException ex
         ; Check for not-found errors and return nil.
@@ -183,7 +183,7 @@
   (-list
     [this opts]
     (->> (list-directory-seq client root (:limit opts) (:after opts))
-         (filter read-only-block?)
+         (filter valid-block?)
          (map (partial directory-entry->stats store-fqdn root))
          (store/select-stats opts)))
 
@@ -196,18 +196,17 @@
 
   (-put!
     [this block]
-    (or (.-get this (:id block))
-        (let [path (id->path root (:id block))]
-          (with-open [output (.createFile client path IfExists/FAIL write-permission true)
-                      content (block/open block)]
-            (io/copy content output))
-          (try-until #(= (:size block)
-                         (or (.length (.getDirectoryEntry client path)) 0))
-                     {:tries 5 :wait-period 200 :intent "upload complete"})
-          (.setPermission client path read-permission)
-          (try-until #(= read-permission
-                         (.-octalPermissions (.getAclStatus client path)))
-                     {:intent "permission flag set"}))))
+    (let [path (id->path root (:id block))
+          pre-write-path (str path pre-write-path-suffix)]
+      (when-not (.checkExists client path)
+        (with-open [output (.createFile client pre-write-path IfExists/FAIL write-permission true)
+                    content (block/open block)]
+          (io/copy content output))
+        (try-until #(= (:size block)
+                       (or (.length (.getDirectoryEntry client pre-write-path)) 0))
+                   {:tries 5 :wait-period 200 :intent "upload complete"})
+        (.rename client pre-write-path path))
+      (.-get this (:id block))))
 
 
   (-delete!
