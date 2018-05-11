@@ -1,4 +1,4 @@
-(defproject amperity/blocks-adl "0.1.1-SNAPSHOT"
+(defproject amperity/blocks-adl "0.2.0-SNAPSHOT"
   :description "Content-addressable Azure DataLake block store."
   :url "https://github.com/amperity/blocks-adls"
   :license {:name "Apache License 2.0"
@@ -12,12 +12,12 @@
   :pedantic? :abort
 
   :dependencies
-  [[org.clojure/clojure "1.8.0"]
+  [[org.clojure/clojure "1.9.0"]
    [org.clojure/tools.logging "0.4.0"]
-   [com.microsoft.azure/azure-data-lake-store-sdk "2.2.3"]
+   [com.microsoft.azure/azure-data-lake-store-sdk "2.2.8"]
    [com.stuartsierra/component "0.3.2"]
-   [mvxcvi/blocks "1.0.0"]
-   [mvxcvi/multihash "2.0.2"]]
+   [mvxcvi/blocks "1.1.0"]
+   [mvxcvi/multihash "2.0.3"]]
 
   :test-selectors
   {:default (complement :integration)
@@ -40,6 +40,6 @@
    :coverage
    {:plugins [[lein-cloverage "1.0.10"]]
     :dependencies [[commons-logging "1.2"]
-                   [riddley "0.1.14"]]
+                   [riddley "0.1.15"]]
     :jvm-opts ["-Dorg.apache.commons.logging.Log=org.apache.commons.logging.impl.SimpleLog"
                "-Dorg.apache.commons.logging.simplelog.defaultlog=trace"]}})

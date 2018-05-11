@@ -86,6 +86,7 @@
    :source (adl-uri store-fqdn (.fullName entry))
    :stored-at (.lastModifiedTime entry)})
 
+
 (defn- try-until
   "Call zero-arity predicate function `ready?` up to `tries`
   times, waiting `wait-period` before a new attempt. If no
@@ -98,6 +99,7 @@
     (when-not (ready?)
       (Thread/sleep wait-period)
       (recur ready? (update opts :tries dec)))))
+
 
 (defn- file->block
   "Creates a lazy block to read from the file identified by the stats map."
@@ -150,10 +152,11 @@
         (throw (IllegalStateException.
                  (str "Cannot access Azure Data Lake block store at "
                       (adl-uri store-fqdn root)))))
-      (let [summary (.getContentSummary client root)]
-        (log/infof "Store contains %.1f MB in %d blocks"
-                   (/ (.spaceConsumed summary) 1024.0 1024.0)
-                   (.fileCount summary)))
+      (when (:check-summary? this)
+        (let [summary (.getContentSummary client root)]
+          (log/infof "Store contains %.1f MB in %d blocks"
+                     (/ (.spaceConsumed summary) 1024.0 1024.0)
+                     (.fileCount summary))))
       (assoc this :client client)))
 
 
