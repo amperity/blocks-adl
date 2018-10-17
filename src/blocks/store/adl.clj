@@ -137,17 +137,21 @@
 ;; ## Block Store
 
 (defrecord ADLBlockStore
-  [^AccessTokenProvider token-provider
+  [token-provider
    ^ADLStoreClient client
    ^String store-fqdn
-   ^String root]
+   ^String root
+   token-provider-key]
 
   component/Lifecycle
 
   (start
     [this]
     (log/info "Connecting Azure Data Lake client to" store-fqdn)
-    (let [client (ADLStoreClient/createClient store-fqdn token-provider)]
+    (let [^AccessTokenProvider provider (if token-provider-key
+                                          (token-provider-key token-provider)
+                                          token-provider)
+          client (ADLStoreClient/createClient store-fqdn provider)]
       (when-not (.checkAccess client root "rwx")
         (throw (IllegalStateException.
                  (str "Cannot access Azure Data Lake block store at "
