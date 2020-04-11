@@ -64,7 +64,7 @@
     (with-meta
       {:id (multihash/parse (.name entry))
        :size (.length entry)
-       :stored-at (.lastModifiedTime entry)}
+       :stored-at (.toInstant (.lastModifiedTime entry))}
       {::store store-fqdn
        ::path (.fullName entry)})))
 
