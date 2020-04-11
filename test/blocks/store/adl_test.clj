@@ -1,11 +1,9 @@
 (ns blocks.store.adl-test
   (:require
-    [blocks.core :as block]
     [blocks.store.adl :as adl :refer [adl-block-store]]
     [blocks.store.tests :as tests]
-    [clojure.test :refer :all]
-    [com.stuartsierra.component :as component]
-    [multiformats.hash :as multihash])
+    [clojure.test :refer [deftest]]
+    [com.stuartsierra.component :as component])
   (:import
     (com.microsoft.azure.datalake.store
       ADLStoreClient)

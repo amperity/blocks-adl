@@ -7,7 +7,6 @@
     [clojure.string :as str]
     [clojure.tools.logging :as log]
     [com.stuartsierra.component :as component]
-    [manifold.deferred :as d]
     [manifold.stream :as s]
     [multiformats.hash :as multihash])
   (:import
@@ -59,7 +58,7 @@
 
 (defn- entry-stats
   "Generates a metadata map from a `DirectoryEntry` object."
-  [store-fqdn root ^DirectoryEntry entry]
+  [store-fqdn ^DirectoryEntry entry]
   (when (block-file? entry)
     (with-meta
       {:id (multihash/parse (.name entry))
@@ -94,22 +93,6 @@
   ^String
   [root id]
   (str root (multihash/hex id)))
-
-
-(defn- path->id
-  "Converts an ADLS file path into a multihash identifier, potentially stripping
-  out a common root. The block filename must be a valid hex-encoded multihash."
-  [root path]
-  (when path
-    (if (str/starts-with? path root)
-      (let [file-name (subs path root)]
-        (if (hex? file-name)
-          (multihash/parse file-name)
-          (log/warnf "Encountered block filename with invalid hex: %s"
-                     (pr-str file-name))))
-      (log/warnf "ADLS file %s is not under root %s"
-                 (pr-str path)
-                 (pr-str root)))))
 
 
 
@@ -164,7 +147,7 @@
     (let [path (id->path root id)
           entry (.getDirectoryEntry client path)]
       (when (block-file? entry)
-        (entry-stats store-fqdn root entry)))
+        (entry-stats store-fqdn entry)))
     (catch ADLException ex
       ;; Check for not-found errors and return nil.
       (when (not= 404 (.httpResponseCode ex))
@@ -251,7 +234,7 @@
             client root opts
             (fn stream-block
               [entry]
-              (if-let [stats (entry-stats store-fqdn root entry)]
+              (if-let [stats (entry-stats store-fqdn entry)]
                 ;; Publish block to stream.
                 @(s/put! out (file->block client stats))
                 ;; Doesn't look like a block - ignore and continue.
