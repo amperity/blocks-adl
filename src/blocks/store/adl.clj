@@ -32,7 +32,7 @@
   "640")
 
 
-(def ^:private ^:const pre-write-path-suffix
+(def ^:private ^:const landing-suffix
   "A suffix to apply to in-flight writes."
   ".ATTEMPT")
 
@@ -57,15 +57,16 @@
          (hex? (.name entry)))))
 
 
-(defn- directory-entry->stats
+(defn- entry-stats
   "Generates a metadata map from a `DirectoryEntry` object."
   [store-fqdn root ^DirectoryEntry entry]
-  (with-meta
-    {:id (multihash/parse (.name entry))
-     :size (.length entry)
-     :stored-at (.lastModifiedTime entry)}
-    {::store store-fqdn
-     ::path (.fullName entry)}))
+  (when (block-file? entry)
+    (with-meta
+      {:id (multihash/parse (.name entry))
+       :size (.length entry)
+       :stored-at (.lastModifiedTime entry)}
+      {::store store-fqdn
+       ::path (.fullName entry)})))
 
 
 
@@ -111,40 +112,6 @@
                  (pr-str root)))))
 
 
-(defn- get-file-stats
-  "Look up a file in ADL. Returns the stats map if it exists, otherwise nil."
-  [^ADLStoreClient client store-fqdn root id]
-  (try
-    (let [path (id->path root id)
-          entry (.getDirectoryEntry client path)]
-      (when (block-file? entry)
-        (directory-entry->stats store-fqdn root entry)))
-    (catch ADLException ex
-      ;; Check for not-found errors and return nil.
-      (when (not= 404 (.httpResponseCode ex))
-        (throw ex)))))
-
-
-(defn- list-directory-seq
-  "Produces a lazy sequence of `DirectoryEntry` values representing the
-  children of the given directory. This repeatedly calls `EnumerateDirectory`
-  as the sequence is consumed."
-  [^ADLStoreClient client path limit after]
-  (when (or (nil? limit) (pos? limit))
-    (lazy-seq
-      (log/debugf "EnumerateDirectory in %s after %s limit %s"
-                  path (pr-str after) (pr-str limit))
-      (let [listing (if limit
-                      (.enumerateDirectory client ^String path ^long limit ^String after)
-                      (.enumerateDirectory client ^String path ^String after))]
-        (when (seq listing)
-          (concat listing
-                  (list-directory-seq
-                    client path
-                    (and limit (- limit (count listing)))
-                    (.name ^DirectoryEntry (last listing)))))))))
-
-
 
 ;; ## File Content
 
@@ -188,6 +155,51 @@
 
 
 
+;; ## File Functions
+
+(defn- get-file-stats
+  "Look up a file in ADL. Returns the stats map if it exists, otherwise nil."
+  [^ADLStoreClient client store-fqdn root id]
+  (try
+    (let [path (id->path root id)
+          entry (.getDirectoryEntry client path)]
+      (when (block-file? entry)
+        (entry-stats store-fqdn root entry)))
+    (catch ADLException ex
+      ;; Check for not-found errors and return nil.
+      (when (not= 404 (.httpResponseCode ex))
+        (throw ex)))))
+
+
+(defn- run-entries!
+  "Run the provided function over all entries in ADL matching the given query.
+  The loop will terminate if the function returns false or nil."
+  [^ADLStoreClient client path query f]
+  (loop [after (:after query)
+         limit (:limit query)]
+    (when (or (nil? limit) (pos? limit))
+      (log/tracef "EnumerateDirectory in %s after %s limit %s"
+                  path (pr-str after) (pr-str limit))
+      (let [entries (if limit
+                      (.enumerateDirectory client ^String path ^long limit ^String after)
+                      (.enumerateDirectory client ^String path ^String after))]
+        (and
+          ;; Check whether there are more entries to process.
+          (seq entries)
+          ;; Run f on each object entry while it keeps returning true.
+          (loop [entries entries]
+            (if-let [entry ^DirectoryEntry (first entries)]
+              (when (and (or (nil? (:before query))
+                             (pos? (compare (:before query) (.name entry))))
+                         (f entry))
+                (recur (next entries)))
+              true))
+          ;; Recur to continue listing.
+          (recur (.name ^DirectoryEntry (last entries))
+                 (and limit (- limit (count entries)))))))))
+
+
+
 ;; ## Block Store
 
 (defrecord ADLBlockStore
@@ -227,11 +239,24 @@
 
   (-list
     [this opts]
-    ;; FIXME: rewrite as stream
-    (->> (list-directory-seq client root (:limit opts) (:after opts))
-         (filter block-file?)
-         (map (partial directory-entry->stats store-fqdn root))
-         (store/select-stats opts)))
+    (let [out (s/stream 1000)]
+      (store/future'
+        (try
+          (run-entries!
+            client root opts
+            (fn stream-block
+              [entry]
+              (if-let [stats (entry-stats store-fqdn root entry)]
+                ;; Publish block to stream.
+                @(s/put! out (file->block client stats))
+                ;; Doesn't look like a block - ignore and continue.
+                true)))
+          (catch Exception ex
+            (log/error ex "Failure listing ADL directory")
+            (s/put! out ex))
+          (finally
+            (s/close! out))))
+      (s/source-only out)))
 
 
   (-stat
@@ -255,21 +280,21 @@
         (file->block client root stats)
         ;; Upload block to ADL.
         (let [path (id->path root (:id block))
-              pre-write-path (str path pre-write-path-suffix)]
+              landing-path (str path landing-suffix)]
           ;; Create and write block content to file.
-          (with-open [output (.createFile client pre-write-path IfExists/FAIL write-permission true)
+          (with-open [output (.createFile client landing-path IfExists/FAIL write-permission true)
                       content (data/content-stream block nil nil)]
             (io/copy content output))
           ;; Wait for upload to complete.
           (loop [tries 5]
-            (when (not= (:size block) (.length (.getDirectoryEntry client pre-write-path)))
+            (when (not= (:size block) (.length (.getDirectoryEntry client landing-path)))
               (if (pos? tries)
                 (do (Thread/sleep 200)
                     (recur (dec tries)))
                 (log/warn "Timed out waiting for upload write consistency to"
-                          pre-write-path))))
+                          landing-path))))
           ;; Atomically rename to the target block file.
-          (.rename client pre-write-path path)
+          (.rename client landing-path path)
           ;; Return block for file.
           (file->block
             client root
