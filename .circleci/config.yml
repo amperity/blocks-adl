@@ -38,7 +38,7 @@ jobs:
             unzip clj-kondo-${CLJ_KONDO_VERSION}-linux-amd64.zip
       - run:
           name: Lint source code
-          command: "./clj-kondo --lint src test blocks-tests/src"
+          command: "./clj-kondo --lint src test"
 
   test:
     executor: clojure
