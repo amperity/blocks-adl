@@ -145,21 +145,6 @@
                     (.name ^DirectoryEntry (last listing)))))))))
 
 
-;; TODO: rewrite as macro? use manifold.time
-(defn- try-until
-  "Call zero-arity predicate function `ready?` up to `tries`
-  times, waiting `wait-period` before a new attempt. If no
-  tries remain, log a message with `intent`, return nil."
-  [ready? {:keys [tries wait-period intent]
-           :or {tries 1 wait-period 20} :as opts}]
-  (if-not (pos? tries)
-    (log/infof "Timed out waiting for eventual consistency%s."
-               (or (and intent (str " (for: " intent ")")) ""))
-    (when-not (ready?)
-      (Thread/sleep wait-period)
-      (recur ready? (update opts :tries dec)))))
-
-
 
 ;; ## File Content
 
@@ -271,12 +256,21 @@
         ;; Upload block to ADL.
         (let [path (id->path root (:id block))
               pre-write-path (str path pre-write-path-suffix)]
+          ;; Create and write block content to file.
           (with-open [output (.createFile client pre-write-path IfExists/FAIL write-permission true)
                       content (data/content-stream block nil nil)]
             (io/copy content output))
-          (try-until #(= (:size block) (.length (.getDirectoryEntry client pre-write-path)))
-                     {:tries 5 :wait-period 200 :intent "upload complete"})
+          ;; Wait for upload to complete.
+          (loop [tries 5]
+            (when (not= (:size block) (.length (.getDirectoryEntry client pre-write-path)))
+              (if (pos? tries)
+                (do (Thread/sleep 200)
+                    (recur (dec tries)))
+                (log/warn "Timed out waiting for upload write consistency to"
+                          pre-write-path))))
+          ;; Atomically rename to the target block file.
           (.rename client pre-write-path path)
+          ;; Return block for file.
           (file->block
             client root
             (with-meta
