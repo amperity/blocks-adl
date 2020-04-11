@@ -180,9 +180,14 @@
     (when (or (nil? limit) (pos? limit))
       (log/tracef "EnumerateDirectory in %s after %s limit %s"
                   path (pr-str after) (pr-str limit))
-      (let [entries (if limit
-                      (.enumerateDirectory client ^String path ^long limit ^String after)
-                      (.enumerateDirectory client ^String path ^String after))]
+      (let [entries (try
+                      (if limit
+                        (.enumerateDirectory client ^String path ^long limit ^String after)
+                        (.enumerateDirectory client ^String path ^String after))
+                      (catch ADLException ex
+                        ;; Interpret missing directories as empty.
+                        (when (not= 404 (.httpResponseCode ex))
+                          (throw ex))))]
         (and
           ;; Check whether there are more entries to process.
           (seq entries)
@@ -269,7 +274,7 @@
     [this id]
     (store/future'
       (when-let [stats (get-file-stats client store-fqdn root id)]
-        (file->block client root stats))))
+        (file->block client stats))))
 
 
   (-put!
@@ -277,7 +282,7 @@
     (store/future'
       (if-let [stats (get-file-stats client store-fqdn root (:id block))]
         ;; Block already stored, return it.
-        (file->block client root stats)
+        (file->block client stats)
         ;; Upload block to ADL.
         (let [path (id->path root (:id block))
               landing-path (str path landing-suffix)]
@@ -297,7 +302,7 @@
           (.rename client landing-path path)
           ;; Return block for file.
           (file->block
-            client root
+            client
             (with-meta
               {:id (:id block)
                :size (:size block)
