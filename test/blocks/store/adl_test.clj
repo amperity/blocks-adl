@@ -7,10 +7,10 @@
     [com.stuartsierra.component :as component]
     [multiformats.hash :as multihash])
   (:import
-    (com.microsoft.azure.datalake.store.oauth2
-      ClientCredsTokenProvider)
     (com.microsoft.azure.datalake.store
-      ADLStoreClient)))
+      ADLStoreClient)
+    (com.microsoft.azure.datalake.store.oauth2
+      ClientCredsTokenProvider)))
 
 
 ;; ## Integration Tests

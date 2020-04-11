@@ -21,12 +21,13 @@
       ClientCredsTokenProvider)))
 
 
-(defn store [path]
+(defn store
+  [path]
   (let [store-fqdn (System/getenv "BLOCKS_ADL_TEST_STORE")
         token-provider (ClientCredsTokenProvider.
-                           (System/getenv "AZ_AUTH_URL")
-                           (System/getenv "AZ_APP_ID")
-                           (System/getenv "AZ_APP_KEY"))]
+                         (System/getenv "AZ_AUTH_URL")
+                         (System/getenv "AZ_APP_ID")
+                         (System/getenv "AZ_APP_KEY"))]
     (->
       (adl-block-store store-fqdn
                        :root (or path "/blocks")
