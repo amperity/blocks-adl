@@ -3,6 +3,7 @@
 /checkouts
 /.lein-*
 /.nrepl-port
+/.clj-kondo/.cache
 pom.xml
 pom.xml.asc
 *.jar
