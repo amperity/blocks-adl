@@ -37,7 +37,7 @@
 
 
 (defn- hex?
-  "True if the valu eis a valid hexadecimal string."
+  "True if the value is a valid hexadecimal string."
   [x]
   (and (string? x) (re-matches #"[0-9a-fA-F]+" x)))
 
